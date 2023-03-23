@@ -2,4 +2,4 @@ For creating inflection data for more languages use [this Powershell script and 
 
 Due to file size considerations, Italian dictionary does not include Cross product information. Russian dictionary does not include both prefix prepended forms and cross products.
 
-Hunspell dictiories are taken from [this repository](https://github.com/titoBouzout/Dictionaries).
+Hunspell dictionaries are taken from [this repository](https://github.com/titoBouzout/Dictionaries).
