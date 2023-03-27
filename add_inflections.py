@@ -6,7 +6,7 @@ import sys
 
 from pyglossary.glossary_v2 import Glossary
 
-# Unmunched Hunspell dictionary format, see: https://gist.github.com/anezih/5e0fc6d68c9166fe2ea3ffc05bc68476
+# Unmunched Hunspell dictionary format, see: https://github.com/anezih/HunspellWordForms
 # [
 #     ...
 #     {
