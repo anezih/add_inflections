@@ -5,7 +5,8 @@ Add inflection information to any dictionary format supported by PyGlossary.
 python add_inflections.py --help
 ```
 ```
-usage: add_inflections.py [-h] -d DF -j JSON [--input-format] [--output-format] [-p] [-c]
+usage: add_inflections.py [-h] -d DF [-j JSON] [--glos-infl-source GS] [--glos-infl-source-format] [--input-format]
+                          [--output-format] [-p] [-c]
 
 options:
   -h, --help            show this help message and exit
@@ -13,6 +14,11 @@ options:
                         Input dictionary path. (default: None)
   -j JSON, --unmunched-json JSON
                         <language>.json(.gz) (default: None)
+  --glos-infl-source GS
+                        Dictionary that will be used as an inflection source by-itself or together with json file.
+                        (default: None)
+  --glos-infl-source-format
+                        --glos-infl-source dictionary format, allowed values are same as --input-format (default: )
   --input-format        Allowed values: Aard2Slob, ABCMedicalNotes, Almaany, AppleDictBin, BabylonBgl, CC-CEDICT, cc-
                         kedict, CrawlerDir, Csv, Dicformids, Dictcc, Dictcc_split, DictOrg, Dictunformat, DigitalNK,
                         ABBYYLingvoDSL, Dictfile, Edlin, FreeDict, GettextPo, Info, IUPACGoldbook, JMDict, JMnedict,
