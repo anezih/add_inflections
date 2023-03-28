@@ -41,6 +41,10 @@ python add_inflections.py -d dict_without_inflections.dsl -j '.\inflection_data\
 - If you omit the `--input-format`, PyGlossary will try to infer the format from the file extension.
 - If you omit the `--output-format`, output will default to StarDict format.
 
+Passing another dictionary as an inflection data source together with unmunched json (FR.xml is a StardictTextual dictionary.):
+```
+python add_inflections.py -d fra_tur.dsl --glos-infl-source FR.xml --glos-infl-source-format StardictTextual -j .\inflection_data\French.json.gz
+```
 # Required Packages
 
 ```
