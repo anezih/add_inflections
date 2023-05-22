@@ -6,7 +6,7 @@ python add_inflections.py --help
 ```
 ```
 usage: add_inflections.py [-h] -d DF [-j JSON] [--glos-infl-source GS] [--glos-infl-source-format] [--input-format]
-                          [--output-format] [-p] [-c]
+                          [--output-format] [-p] [-c] [-k]
 
 options:
   -h, --help            show this help message and exit
@@ -29,6 +29,7 @@ options:
                         Stardict, StardictTextual, Tabfile, Yomichan (default: Stardict)
   -p, --add-prefixes
   -c, --add-cross-products
+  -k, --keep            Keep existing inflections. (default: False)
 ```
 
 ## Example Usage
