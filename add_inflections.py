@@ -57,7 +57,6 @@ class Unmunched(INFL):
                     temp = json.load(f)
             except:
                 sys.exit("[!] Couldn't open json file. Check the filename/path.")
-        self.j = {}
         for it in temp:
          for key, val in it.items():
             if key in self.j.keys():
@@ -99,7 +98,8 @@ class GlosSource(INFL):
     def get_infl(self, word: str, pfx: bool = False, cross: bool = False) -> list[str]:
         return self.j.get(word, [])
 
-def add_infl(dict_: str, infl_dicts: list[INFL], pfx: bool = False, cross: bool = False, input_format: str = None, output_format: str = None) -> None:
+def add_infl(dict_: str, infl_dicts: list[INFL], pfx: bool = False, cross: bool = False,
+             input_format: str = None, output_format: str = None, keep: bool = False) -> None:
     if not os.path.exists(dict_):
         sys.exit("[!] Couldn't find input dictionary file. Check the filename/path.")
     glos = Glossary()
@@ -120,9 +120,17 @@ def add_infl(dict_: str, infl_dicts: list[INFL], pfx: bool = False, cross: bool 
         if entry.l_word[0] in suffixes:
             suffixes.remove(entry.l_word[0])
 
+        if keep and (len(entry.l_word) > 1):
+            temp = list(set(suffixes + entry.l_word[1:]))
+            temp.insert(0, entry.l_word[0])
+            word_suffixes = temp
+        else:
+            suffixes.insert(0, entry.l_word[0])
+            word_suffixes = suffixes
+
         glos_syn.addEntry(
             glos_syn.newEntry(
-                word=(entry.l_word + suffixes), defi=entry.defi, defiFormat="h"
+                word=word_suffixes, defi=entry.defi, defiFormat="h"
             )
         )
 
@@ -168,6 +176,8 @@ if __name__ == '__main__':
 
     parser.add_argument("-p", "--add-prefixes", dest="pfx", action="store_true", default=False)
     parser.add_argument("-c", "--add-cross-products", dest="cross", action="store_true", default=False)
+    parser.add_argument("-k", "--keep", dest="keep", action="store_true", default=False,
+                        help="Keep existing inflections.")
     args = parser.parse_args()
     if not (args.json or args.gs):
         sys.exit("[!] You need to specify at least one inflection source: --unmunched-json, --glos-infl-source or both.")
@@ -181,5 +191,5 @@ if __name__ == '__main__':
     add_infl(
         dict_=args.df, infl_dicts=infl_list, pfx=args.pfx,
         cross=args.cross, input_format=args.informat,
-        output_format=args.outformat
+        output_format=args.outformat, keep=args.keep
     )
