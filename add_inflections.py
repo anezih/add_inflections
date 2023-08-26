@@ -98,8 +98,23 @@ class GlosSource(INFL):
     def get_infl(self, word: str, pfx: bool = False, cross: bool = False) -> list[str]:
         return self.j.get(word, [])
 
+def sort_glos(_glos: Glossary) -> Glossary:
+    glos_sorted = Glossary()
+    glos_sorted.setInfo("title", _glos.getInfo("title"))
+    glos_sorted.setInfo("description", _glos.getInfo("description"))
+    glos_sorted.setInfo("author", _glos.getInfo("author"))
+    lst = [g for g in _glos]
+    lst.sort(key=lambda x: (x.l_word[0].encode("utf-8").lower(), x.l_word[0]))
+    for _e in lst:
+        glos_sorted.addEntry(
+            glos_sorted.newEntry(
+                word=_e.l_word, defi=_e.defi, defiFormat=_e.defiFormat
+            )
+        )
+    return glos_sorted
+
 def add_infl(dict_: str, infl_dicts: list[INFL], pfx: bool = False, cross: bool = False,
-             input_format: str = None, output_format: str = None, keep: bool = False) -> None:
+             input_format: str = None, output_format: str = None, keep: bool = False, sort=False) -> None:
     if not os.path.exists(dict_):
         sys.exit("[!] Couldn't find input dictionary file. Check the filename/path.")
     glos = Glossary()
@@ -109,6 +124,9 @@ def add_infl(dict_: str, infl_dicts: list[INFL], pfx: bool = False, cross: bool 
         glos.directRead(filename=dict_, format=input_format)
     else:
         glos.directRead(filename=dict_)
+
+    if sort:
+        glos = sort_glos(glos)
 
     for entry in glos:
         suffixes_set = {
@@ -130,7 +148,7 @@ def add_infl(dict_: str, infl_dicts: list[INFL], pfx: bool = False, cross: bool 
 
         glos_syn.addEntry(
             glos_syn.newEntry(
-                word=word_suffixes, defi=entry.defi, defiFormat="h"
+                word=word_suffixes, defi=entry.defi, defiFormat=entry.defiFormat
             )
         )
 
@@ -148,7 +166,10 @@ def add_infl(dict_: str, infl_dicts: list[INFL], pfx: bool = False, cross: bool 
         sys.exit("[!] Couldn't create or enter the output directory.")
 
     # for format parameter check the PyGlossary README > Supported formats > your preferred format > "Name" attribute
-    glos_syn.write(f"{outname}", format=output_format)
+    if output_format == "Stardict":
+        glos_syn.write(f"{outname}", format=output_format, dictzip=False)
+    else:
+        glos_syn.write(f"{outname}", format=output_format)
 
 if __name__ == '__main__':
     Glossary.init()
@@ -178,6 +199,7 @@ if __name__ == '__main__':
     parser.add_argument("-c", "--add-cross-products", dest="cross", action="store_true", default=False)
     parser.add_argument("-k", "--keep", dest="keep", action="store_true", default=False,
                         help="Keep existing inflections.")
+    parser.add_argument("--sort", dest="sort", action="store_true", default=False, help="Sort input dictionary.")
     args = parser.parse_args()
     if not (args.json or args.gs):
         sys.exit("[!] You need to specify at least one inflection source: --unmunched-json, --glos-infl-source or both.")
@@ -191,5 +213,5 @@ if __name__ == '__main__':
     add_infl(
         dict_=args.df, infl_dicts=infl_list, pfx=args.pfx,
         cross=args.cross, input_format=args.informat,
-        output_format=args.outformat, keep=args.keep
+        output_format=args.outformat, keep=args.keep, sort=args.sort
     )

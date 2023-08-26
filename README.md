@@ -6,7 +6,7 @@ python add_inflections.py --help
 ```
 ```
 usage: add_inflections.py [-h] -d DF [-j JSON] [--glos-infl-source GS] [--glos-infl-source-format] [--input-format]
-                          [--output-format] [-p] [-c] [-k]
+                          [--output-format] [-p] [-c] [-k] [--sort]
 
 options:
   -h, --help            show this help message and exit
@@ -30,6 +30,7 @@ options:
   -p, --add-prefixes
   -c, --add-cross-products
   -k, --keep            Keep existing inflections. (default: False)
+  --sort                Sort input dictionary. (default: False)
 ```
 
 ## Example Usage
