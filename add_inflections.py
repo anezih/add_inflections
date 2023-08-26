@@ -4,7 +4,7 @@ import json
 import os
 import sys
 
-from pyglossary.glossary_v2 import Glossary
+from pyglossary.glossary_v2 import Glossary, EntryType
 
 # Unmunched Hunspell dictionary format, see: https://github.com/anezih/HunspellWordForms
 # [
@@ -98,20 +98,10 @@ class GlosSource(INFL):
     def get_infl(self, word: str, pfx: bool = False, cross: bool = False) -> list[str]:
         return self.j.get(word, [])
 
-def sort_glos(_glos: Glossary) -> Glossary:
-    glos_sorted = Glossary()
-    glos_sorted.setInfo("title", _glos.getInfo("title"))
-    glos_sorted.setInfo("description", _glos.getInfo("description"))
-    glos_sorted.setInfo("author", _glos.getInfo("author"))
+def sort_glos(_glos: Glossary) -> list[EntryType]:
     lst = [g for g in _glos]
     lst.sort(key=lambda x: (x.l_word[0].encode("utf-8").lower(), x.l_word[0]))
-    for _e in lst:
-        glos_sorted.addEntry(
-            glos_sorted.newEntry(
-                word=_e.l_word, defi=_e.defi, defiFormat=_e.defiFormat
-            )
-        )
-    return glos_sorted
+    return lst
 
 def add_infl(dict_: str, infl_dicts: list[INFL], pfx: bool = False, cross: bool = False,
              input_format: str = None, output_format: str = None, keep: bool = False, sort=False) -> None:
@@ -124,7 +114,11 @@ def add_infl(dict_: str, infl_dicts: list[INFL], pfx: bool = False, cross: bool 
         glos.directRead(filename=dict_, format=input_format)
     else:
         glos.directRead(filename=dict_)
-
+    
+    glos_syn.setInfo("title", glos.getInfo("title"))
+    glos_syn.setInfo("description", glos.getInfo("description"))
+    glos_syn.setInfo("author", glos.getInfo("author"))
+    
     if sort:
         glos = sort_glos(glos)
 
@@ -151,10 +145,6 @@ def add_infl(dict_: str, infl_dicts: list[INFL], pfx: bool = False, cross: bool 
                 word=word_suffixes, defi=entry.defi, defiFormat=entry.defiFormat
             )
         )
-
-    glos_syn.setInfo("title", glos.getInfo("title"))
-    glos_syn.setInfo("description", glos.getInfo("description"))
-    glos_syn.setInfo("author", glos.getInfo("author"))
 
     outname = os.path.splitext(os.path.basename(dict_))[0]
     outdir = f"{outname}_with_inflections"
