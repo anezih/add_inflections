@@ -5,6 +5,8 @@ import os
 import sys
 
 from pyglossary.glossary_v2 import Glossary
+from pyglossary.sq_entry_list import SqEntryList
+from pyglossary.sort_keys import lookupSortKey
 
 # Unmunched Hunspell dictionary format, see: https://github.com/anezih/HunspellWordForms
 # [
@@ -105,12 +107,26 @@ def add_infl(dict_: str, infl_dicts: list[INFL], pfx: bool = False, cross: bool 
     glos = Glossary()
     glos_syn = Glossary()
 
-    if input_format:
-        glos.directRead(filename=dict_, format=input_format)
-    else:
-        glos.directRead(filename=dict_)
+    entries = SqEntryList(
+        entryToRaw=lambda entry: (
+            entry.l_word,
+            entry.b_defi,
+        ),
+        entryFromRaw=lambda rawEntry: glos.newEntry(
+            rawEntry[0],
+            rawEntry[1].decode("utf-8"),
+        ),
+        filename=f"{dict_}.db",
+        create=True,
+        persist=True,
+    )
+    entries.setSortKey(lookupSortKey("stardict"))
 
+    glos.directRead(filename=dict_, format=input_format)
     for entry in glos:
+        entries.append(entry)
+
+    for entry in entries:
         suffixes_set = {
             _infl
             for infl_dict in infl_dicts
