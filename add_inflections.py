@@ -4,7 +4,8 @@ import json
 import os
 import sys
 
-from pyglossary.glossary_v2 import Glossary, EntryType
+from pyglossary.glossary_v2 import Glossary
+from pyglossary.glossary_type import EntryType
 
 # Unmunched Hunspell dictionary format, see: https://github.com/anezih/HunspellWordForms
 # [
@@ -32,9 +33,17 @@ from pyglossary.glossary_v2 import Glossary, EntryType
 #   ...
 # ]
 
+def get_base_name(name: str) -> str:
+    return os.path.splitext(os.path.basename(name))[0]
+
+def sort_glos(_glos: Glossary) -> list[EntryType]:
+    lst = [g for g in _glos]
+    lst.sort(key=lambda x: (x.l_word[0].encode("utf-8").lower(), x.l_word[0]))
+    return lst
+
 class INFL():
     def __init__(self, source: str, glos_format: str = "") -> None:
-        self.j = {}
+        self._infl_dict: dict[str,list[str]] = {}
         self.populate_dict(source=source, glos_format=glos_format)
 
     def populate_dict(self, source: str, glos_format: str = "") -> None:
@@ -48,27 +57,27 @@ class Unmunched(INFL):
         if source.endswith(".gz"):
             try:
                 with gzip.open(source, "rt", encoding="utf-8") as f:
-                    temp = json.load(f)
+                    temp: list[dict[str,dict[str,list[str]]]] = json.load(f)
             except:
                 sys.exit("[!] Couldn't open gzipped json file. Check the filename/path.")
         else:
             try:
                 with open(source, "r", encoding="utf-8") as f:
-                    temp = json.load(f)
+                    temp: list[dict[str,dict[str,list[str]]]] = json.load(f)
             except:
                 sys.exit("[!] Couldn't open json file. Check the filename/path.")
         for it in temp:
          for key, val in it.items():
-            if key in self.j.keys():
-                self.j[key]["PFX"]   += val["PFX"]
-                self.j[key]["SFX"]   += val["SFX"]
-                self.j[key]["Cross"] += val["Cross"]
+            if key in self._infl_dict.keys():
+                self._infl_dict[key]["PFX"]   += val["PFX"]
+                self._infl_dict[key]["SFX"]   += val["SFX"]
+                self._infl_dict[key]["Cross"] += val["Cross"]
             else:
-                self.j[key] = val
+                self._infl_dict[key] = val
 
     def get_infl(self, word: str, pfx: bool = False, cross: bool = False) -> list[str]:
         afx = []
-        afx_lst = self.j.get(word)
+        afx_lst = self._infl_dict.get(word)
         if afx_lst:
             afx += afx_lst["SFX"]
             if pfx:
@@ -87,21 +96,15 @@ class GlosSource(INFL):
         else:
             glos.directRead(filename=source)
         for entry in glos:
-            if len(entry.l_word) < 2:
-                continue
-            hw = entry.l_word[0]
-            if hw in self.j.keys():
-                self.j[hw] += entry.l_word[1:]
-            else:
-                self.j[hw] = entry.l_word[1:]
+            if len(entry.l_word) > 1:
+                hw = entry.l_word[0]
+                if hw in self._infl_dict.keys():
+                    self._infl_dict[hw] += entry.l_word[1:]
+                else:
+                    self._infl_dict[hw] = entry.l_word[1:]
 
     def get_infl(self, word: str, pfx: bool = False, cross: bool = False) -> list[str]:
-        return self.j.get(word, [])
-
-def sort_glos(_glos: Glossary) -> list[EntryType]:
-    lst = [g for g in _glos]
-    lst.sort(key=lambda x: (x.l_word[0].encode("utf-8").lower(), x.l_word[0]))
-    return lst
+        return self._infl_dict.get(word, [])
 
 def add_infl(dict_: str, infl_dicts: list[INFL], pfx: bool = False, cross: bool = False,
              input_format: str = None, output_format: str = None, keep: bool = False, sort=False) -> None:
@@ -110,18 +113,26 @@ def add_infl(dict_: str, infl_dicts: list[INFL], pfx: bool = False, cross: bool 
     glos = Glossary()
     glos_syn = Glossary()
 
+    print(f"{'Reading the input dictionary...':<35}", end="")
     if input_format:
         glos.directRead(filename=dict_, format=input_format)
     else:
         glos.directRead(filename=dict_)
-    
+    print(f"{'Done.' :>6}")
+
+    glos_len = glos.__len__()
     glos_syn.setInfo("title", glos.getInfo("title"))
     glos_syn.setInfo("description", glos.getInfo("description"))
     glos_syn.setInfo("author", glos.getInfo("author"))
-    
-    if sort:
-        glos = sort_glos(glos)
 
+    # if the out format is stardict sort the input just in case
+    if sort or output_format == "Stardict":
+        print(f"{'Sorting the input dictionary...':<35}", end="")
+        glos = sort_glos(glos)
+        print(f"{'Done.' :>6}")
+
+    cnt = 0
+    total_infl_found = 0
     for entry in glos:
         suffixes_set = {
             _infl
@@ -131,6 +142,8 @@ def add_infl(dict_: str, infl_dicts: list[INFL], pfx: bool = False, cross: bool 
         suffixes = list(suffixes_set)
         if entry.l_word[0] in suffixes:
             suffixes.remove(entry.l_word[0])
+
+        total_infl_found += len(suffixes)
 
         if keep and (len(entry.l_word) > 1):
             temp = list(set(suffixes + entry.l_word[1:]))
@@ -145,8 +158,10 @@ def add_infl(dict_: str, infl_dicts: list[INFL], pfx: bool = False, cross: bool 
                 word=word_suffixes, defi=entry.defi, defiFormat=entry.defiFormat
             )
         )
-
-    outname = os.path.splitext(os.path.basename(dict_))[0]
+        cnt += 1
+        print(f"> Processed {cnt:,} / {glos_len:,} words. Total new inflections to be added: {total_infl_found:,}", end="\r")
+    print(f"\n{'Writing the output file(s)...':<35}", end="")
+    outname = get_base_name(dict_)
     outdir = f"{outname}_with_inflections"
     try:
         if not os.path.exists(outdir):
@@ -160,6 +175,7 @@ def add_infl(dict_: str, infl_dicts: list[INFL], pfx: bool = False, cross: bool 
         glos_syn.write(f"{outname}", format=output_format, dictzip=False)
     else:
         glos_syn.write(f"{outname}", format=output_format)
+    print(f"{'Done.' :>6}")
 
 if __name__ == '__main__':
     Glossary.init()
@@ -194,12 +210,14 @@ if __name__ == '__main__':
     if not (args.json or args.gs):
         sys.exit("[!] You need to specify at least one inflection source: --unmunched-json, --glos-infl-source or both.")
     infl_list = []
+    print(f"\r{'Preparing the inflection sources...':<35}", end="")
     if args.json:
         infl_json = Unmunched(source=args.json)
         infl_list.append(infl_json)
     if args.gs:
         infl_glos = GlosSource(source=args.gs, glos_format=args.gsf)
         infl_list.append(infl_glos)
+    print(f"{'Done.' :>6}")
     add_infl(
         dict_=args.df, infl_dicts=infl_list, pfx=args.pfx,
         cross=args.cross, input_format=args.informat,
