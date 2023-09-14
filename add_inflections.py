@@ -113,7 +113,7 @@ def add_infl(dict_: str, infl_dicts: list[INFL], pfx: bool = False, cross: bool 
     glos = Glossary()
     glos_syn = Glossary()
 
-    print(f"{'Reading the input dictionary...':<35}", end="")
+    print(f"\r{'Reading the input dictionary...':<35}", end="")
     if input_format:
         glos.directRead(filename=dict_, format=input_format)
     else:
@@ -127,7 +127,7 @@ def add_infl(dict_: str, infl_dicts: list[INFL], pfx: bool = False, cross: bool 
 
     # if the out format is stardict sort the input just in case
     if sort or output_format == "Stardict":
-        print(f"{'Sorting the input dictionary...':<35}", end="")
+        print(f"\r{'Sorting the input dictionary...':<35}", end="")
         glos = sort_glos(glos)
         print(f"{'Done.' :>6}")
 
@@ -159,7 +159,7 @@ def add_infl(dict_: str, infl_dicts: list[INFL], pfx: bool = False, cross: bool 
             )
         )
         cnt += 1
-        print(f"> Processed {cnt:,} / {glos_len:,} words. Total new inflections to be added: {total_infl_found:,}", end="\r")
+        print(f"\r> Processed {cnt:,} / {glos_len:,} words. Total new inflections to be added: {total_infl_found:,}", end="\r")
     print(f"\n{'Writing the output file(s)...':<35}", end="")
     outname = get_base_name(dict_)
     outdir = f"{outname}_with_inflections"
