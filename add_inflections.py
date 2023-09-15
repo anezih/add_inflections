@@ -120,7 +120,7 @@ def add_infl(dict_: str, infl_dicts: list[INFL], pfx: bool = False, cross: bool 
         glos.directRead(filename=dict_)
     print(f"{'Done.' :>6}")
 
-    glos_len = glos.__len__()
+    glos_len = '?' if glos.__len__() == 0 else f"{glos.__len__():,}"
     glos_syn.setInfo("title", glos.getInfo("title"))
     glos_syn.setInfo("description", glos.getInfo("description"))
     glos_syn.setInfo("author", glos.getInfo("author"))
@@ -138,6 +138,7 @@ def add_infl(dict_: str, infl_dicts: list[INFL], pfx: bool = False, cross: bool 
             _infl
             for infl_dict in infl_dicts
             for _infl in infl_dict.get_infl(word=entry.l_word[0], pfx=pfx, cross=cross)
+            if _infl
         }
         suffixes = list(suffixes_set)
         if entry.l_word[0] in suffixes:
@@ -159,7 +160,7 @@ def add_infl(dict_: str, infl_dicts: list[INFL], pfx: bool = False, cross: bool 
             )
         )
         cnt += 1
-        print(f"\r> Processed {cnt:,} / {glos_len:,} words. Total new inflections to be added: {total_infl_found:,}", end="\r")
+        print(f"\r> Processed {cnt:,} / {glos_len} words. Total inflections found: {total_infl_found:,}", end="\r")
     print(f"\n{'Writing the output file(s)...':<35}", end="")
     outname = get_base_name(dict_)
     outdir = f"{outname}_with_inflections"
