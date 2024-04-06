@@ -51,7 +51,7 @@ In the example above we have used 4 inflection sources:
 ### Some Notes:
 - If you omit the `--input-format`, PyGlossary will try to infer the format from the file extension.
 - If you omit the `--output-format`, output will default to StarDict format.
-- It is safer to specify all --glos-infl-sources formats in the --glos-infl-source-formats rather than expecting PyGlossary to infer the formats.
+- It is safer to specify all --glos-infl-sources formats in the --glos-infl-source-formats rather than expecting PyGlossary to infer them.
 
 # Required Packages
 
