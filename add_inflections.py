@@ -1,11 +1,18 @@
 import argparse
 import gzip
 import json
-import os
 import sys
+from functools import cached_property
+from itertools import zip_longest
+from pathlib import Path
 
-from pyglossary.glossary_v2 import Glossary
 from pyglossary.glossary_type import EntryType
+from pyglossary.glossary_v2 import Glossary
+from spylls.hunspell.data.aff import Aff
+from spylls.hunspell.data.dic import Word
+from spylls.hunspell.dictionary import Dictionary
+
+SCRIPT_DIR = Path(__file__).resolve().parent
 
 # Unmunched Hunspell dictionary format, see: https://github.com/anezih/HunspellWordForms
 # [
@@ -33,194 +40,372 @@ from pyglossary.glossary_type import EntryType
 #   ...
 # ]
 
-def get_base_name(name: str) -> str:
-    return os.path.splitext(os.path.basename(name))[0]
+class InflBase:
+    def __init__(self, source_path: str, glos_format: str = "") -> None:
+        self.source_path = source_path
+        self.glos_format = glos_format
 
-def sort_glos(_glos: Glossary) -> list[EntryType]:
-    lst = [g for g in _glos]
-    lst.sort(key=lambda x: (x.l_word[0].encode("utf-8").lower(), x.l_word[0]))
-    return lst
+    @cached_property
+    def path(self) -> Path:
+        return Path(self.source_path).resolve()
 
-class INFL():
-    def __init__(self, source: str, glos_format: str = "") -> None:
-        self._infl_dict: dict[str,list[str]] = {}
-        self.populate_dict(source=source, glos_format=glos_format)
-
-    def populate_dict(self, source: str, glos_format: str = "") -> None:
+    @cached_property
+    def InflDict(self) -> dict[str,list[str]]:
         raise NotImplementedError
 
-    def get_infl(self, word: str, pfx: bool = False, cross: bool = False) -> list[str]:
+    def get_infl(self, word: str, pfx: bool = False, cross: bool = False) -> set[str]:
         raise NotImplementedError
 
-class Unmunched(INFL):
-    def populate_dict(self, source: str, glos_format: str = "") -> None:
-        if source.endswith(".gz"):
+class Unmunched(InflBase):
+    @cached_property
+    def InflDict(self) -> dict[str,dict[str,list[str]]]:
+        if not self.path.exists():
+            raise FileNotFoundError(f"Couldn't find Unmunched dictionary at: {self.source_path}")
+        temp: list[dict[str,dict[str,list[str]]]] = list()
+        if self.path.name.endswith(".gz"):
             try:
-                with gzip.open(source, "rt", encoding="utf-8") as f:
+                with gzip.open(self.path, "rt", encoding="utf-8") as f:
                     temp: list[dict[str,dict[str,list[str]]]] = json.load(f)
             except:
-                sys.exit("[!] Couldn't open gzipped json file. Check the filename/path.")
-        else:
+                raise Exception("[!] Couldn't open gzipped json file. Check the filename/path.")
+        elif self.path.name.endswith(".json"):
             try:
-                with open(source, "r", encoding="utf-8") as f:
+                with open(self.path, "r", encoding="utf-8") as f:
                     temp: list[dict[str,dict[str,list[str]]]] = json.load(f)
             except:
-                sys.exit("[!] Couldn't open json file. Check the filename/path.")
+                raise Exception("[!] Couldn't open json file. Check the filename/path.")
+        _infl_dict: dict[str,dict[str, list[str]]] = dict()
         for it in temp:
-         for key, val in it.items():
-            if key in self._infl_dict.keys():
-                self._infl_dict[key]["PFX"]   += val["PFX"]
-                self._infl_dict[key]["SFX"]   += val["SFX"]
-                self._infl_dict[key]["Cross"] += val["Cross"]
-            else:
-                self._infl_dict[key] = val
+            for key, val in it.items():
+                if key in _infl_dict.keys():
+                    _infl_dict[key]["PFX"]   += val["PFX"]
+                    _infl_dict[key]["SFX"]   += val["SFX"]
+                    _infl_dict[key]["Cross"] += val["Cross"]
+                else:
+                    _infl_dict[key] = val
+        return _infl_dict
 
-    def get_infl(self, word: str, pfx: bool = False, cross: bool = False) -> list[str]:
-        afx = []
-        afx_lst = self._infl_dict.get(word)
-        if afx_lst:
-            afx += afx_lst["SFX"]
+    def get_infl(self, word: str, pfx: bool = False, cross: bool = False) -> set[str]:
+        afx = set()
+        afx_dict = self.InflDict.get(word)
+        if afx_dict:
+            afx.update(afx_dict["SFX"])
             if pfx:
-                afx += afx_lst["PFX"]
+                afx.update(afx_dict["PFX"])
             if cross:
-                afx += afx_lst["Cross"]
+                afx.update(afx_dict["Cross"])
         return afx
 
-class GlosSource(INFL):
-    def populate_dict(self, source: str, glos_format: str = "") -> None:
-        if not os.path.exists(source):
-            sys.exit("[!] Couldn't find dictionary file for inflection source. Check the filename/path.")
+class InflGlosSource(InflBase):
+    @cached_property
+    def InflDict(self) -> dict[str,set[str]]:
+        if not self.path.exists():
+            raise FileNotFoundError(f"Couldn't find InflGlosSource dictionary at: {self.source_path}")
         glos = Glossary()
-        if glos_format:
-            glos.directRead(filename=source, format=glos_format)
+        if self.glos_format:
+            glos.directRead(filename=str(self.path), format=self.glos_format)
         else:
-            glos.directRead(filename=source)
+            glos.directRead(filename=str(self.path))
+        _infl_dict: dict[str,set[str]] = dict()
         for entry in glos:
             if len(entry.l_word) > 1:
-                hw = entry.l_word[0]
-                if hw in self._infl_dict.keys():
-                    self._infl_dict[hw] += entry.l_word[1:]
+                headword = entry.l_word[0]
+                if headword in _infl_dict.keys():
+                    _infl_dict[headword].update(entry.l_word[1:])
                 else:
-                    self._infl_dict[hw] = entry.l_word[1:]
+                    _infl_dict[headword] = set(entry.l_word[1:])
+        return _infl_dict
 
-    def get_infl(self, word: str, pfx: bool = False, cross: bool = False) -> list[str]:
-        return self._infl_dict.get(word, [])
+    def get_infl(self, word: str, pfx: bool = False, cross: bool = False) -> set[str]:
+        return self.InflDict.get(word, set())
 
-def add_infl(dict_: str, infl_dicts: list[INFL], pfx: bool = False, cross: bool = False,
-             input_format: str = None, output_format: str = None, keep: bool = False, sort=False) -> None:
-    if not os.path.exists(dict_):
-        sys.exit("[!] Couldn't find input dictionary file. Check the filename/path.")
-    glos = Glossary()
-    glos_syn = Glossary()
+class HunspellDic(InflBase):
+    # Taken from: https://gist.github.com/zverok/c574b7a9c42cc17bdc2aa396e3edd21a
+    def unmunch(self, word: Word, aff: Aff) -> set[str]:
+        result: set[str] = set()
 
-    print(f"\r{'Reading the input dictionary...':<35}", end="")
-    if input_format:
-        glos.directRead(filename=dict_, format=input_format)
-    else:
-        glos.directRead(filename=dict_)
-    print(f"{'Done.' :>6}")
+        if aff.FORBIDDENWORD and aff.FORBIDDENWORD in word.flags:
+            return result
 
-    glos_len = '?' if glos.__len__() == 0 else f"{glos.__len__():,}"
-    glos_syn.setInfo("title", glos.getInfo("title"))
-    glos_syn.setInfo("description", glos.getInfo("description"))
-    glos_syn.setInfo("author", glos.getInfo("author"))
+        if not (aff.NEEDAFFIX and aff.NEEDAFFIX in word.flags):
+            result.add(word.stem)
 
-    # if the out format is stardict sort the input just in case
-    if sort or output_format == "Stardict":
-        print(f"\r{'Sorting the input dictionary...':<35}", end="")
-        glos = sort_glos(glos)
-        print(f"{'Done.' :>6}")
+        suffixes = [
+            suffix
+            for flag in word.flags
+            for suffix in aff.SFX.get(flag, [])
+            if suffix.cond_regexp.search(word.stem)
+        ]
+        prefixes = [
+            prefix
+            for flag in word.flags
+            for prefix in aff.PFX.get(flag, [])
+            if prefix.cond_regexp.search(word.stem)
+        ]
 
-    cnt = 0
-    total_infl_found = 0
-    for entry in glos:
-        suffixes_set = {
-            _infl
-            for infl_dict in infl_dicts
-            for _infl in infl_dict.get_infl(word=entry.l_word[0], pfx=pfx, cross=cross)
-            if _infl
-        }
-        suffixes = list(suffixes_set)
-        if entry.l_word[0] in suffixes:
-            suffixes.remove(entry.l_word[0])
+        for suffix in suffixes:
+            root = word.stem[0:-len(suffix.strip)] if suffix.strip else word.stem
+            suffixed = root + suffix.add
+            if not (aff.NEEDAFFIX and aff.NEEDAFFIX in suffix.flags):
+                result.add(suffixed)
 
-        total_infl_found += len(suffixes)
+            secondary_suffixes = [
+                suffix2
+                for flag in suffix.flags
+                for suffix2 in aff.SFX.get(flag, [])
+                if suffix2.cond_regexp.search(suffixed)
+            ]
+            for suffix2 in secondary_suffixes:
+                root = suffixed[0:-len(suffix2.strip)] if suffix2.strip else suffixed
+                result.add(root + suffix2.add)
 
-        if keep and (len(entry.l_word) > 1):
-            temp = list(set(suffixes + entry.l_word[1:]))
-            temp.insert(0, entry.l_word[0])
-            word_suffixes = temp
+        for prefix in prefixes:
+            root = word.stem[len(prefix.strip):]
+            prefixed = prefix.add + root
+            if not (aff.NEEDAFFIX and aff.NEEDAFFIX in prefix.flags):
+                result.add(prefixed)
+
+            if prefix.crossproduct:
+                additional_suffixes = [
+                    suffix
+                    for flag in prefix.flags
+                    for suffix in aff.SFX.get(flag, [])
+                    if suffix.crossproduct and not suffix in suffixes and suffix.cond_regexp.search(prefixed)
+                ]
+                for suffix in suffixes + additional_suffixes:
+                    root = prefixed[0:-len(suffix.strip)] if suffix.strip else prefixed
+                    suffixed = root + suffix.add
+                    result.add(suffixed)
+
+                    secondary_suffixes = [
+                        suffix2
+                        for flag in suffix.flags
+                        for suffix2 in aff.SFX.get(flag, [])
+                        if suffix2.crossproduct and suffix2.cond_regexp.search(suffixed)
+                    ]
+                    for suffix2 in secondary_suffixes:
+                        root = suffixed[0:-len(suffix2.strip)] if suffix2.strip else suffixed
+                        result.add(root + suffix2.add)
+        if word.stem in result:
+            result.remove(word.stem)
+        return result
+
+    @cached_property
+    def InflDict(self) -> dict[str,set[str]]:
+        if not self.path.exists():
+            raise FileNotFoundError(f"Couldn't find Hunspell dictionary at: {self.source_path}")
+        base_name = self.path.parent / self.path.stem
+        hunspell_dictionary = Dictionary.from_files(str(base_name))
+        aff: Aff = hunspell_dictionary.aff
+        all_words: list[Word] = hunspell_dictionary.dic.words
+        results: dict[str, set[str]] = dict()
+        for word in all_words:
+            if word.stem in results.keys():
+                results[word.stem].update(self.unmunch(word, aff))
+            else:
+                results[word.stem] = self.unmunch(word, aff)
+        return results
+
+    def get_infl(self, word: str, pfx: bool = False, cross: bool = False) -> set[str]:
+        return self.InflDict.get(word, set())
+
+class AddInflections:
+    def __init__(self, input_dictionary_path: str, input_dictionary_format: str,
+                 output_format: str, pfx: bool, cross: bool, keep_existing_inflections: bool,
+                 infl_glos_source_paths: list[str], infl_glos_formats: list[str],
+                 hunspell_dic_paths: list[str], unmunched_path: str) -> None:
+        self.input_dictionary_path = input_dictionary_path
+        self.input_dictionary_format = input_dictionary_format
+        self.output_format = output_format
+        self.pfx = pfx
+        self.cross = cross
+        self.keep_existing_inflections = keep_existing_inflections
+        self.infl_glos_source_paths = infl_glos_source_paths
+        self.infl_glos_formats = infl_glos_formats
+        self.hunspell_dic_paths = hunspell_dic_paths
+        self.unmunched_path = unmunched_path
+
+    def get_path(self, path: str) -> Path:
+        p = Path(path).resolve()
+        if not p.exists():
+            raise FileNotFoundError(f"Couldn't find file at: {path}")
+        return p.resolve()
+
+    def sort_glos(self, glos: Glossary) -> list[EntryType]:
+        entrytype_lst = [g for g in glos if g.defiFormat != "b"]
+        entrytype_lst.sort(key=lambda x: (x.l_word[0].encode("utf-8").lower(), x.l_word[0]))
+        return entrytype_lst
+
+    @property
+    def OutputFormat(self) -> str:
+        return self.output_format if self.output_format else "Stardict"
+
+    @cached_property
+    def BaseName(self) -> str:
+        p = self.get_path(self.input_dictionary_path)
+        return p.stem
+
+    @cached_property
+    def OutDir(self) -> Path:
+        p = SCRIPT_DIR / f"{self.BaseName}_With_Inflections"
+        if not p.exists():
+            p.mkdir()
+        return p
+
+    @property
+    def OutPath(self) -> Path:
+        return self.OutDir / self.BaseName
+
+    @cached_property
+    def InflDicts(self) -> list[InflBase]:
+        infl_lst: list[InflBase] = list()
+        if self.unmunched_path:
+            infl_lst.append(Unmunched(source_path=self.unmunched_path))
+        if self.infl_glos_source_paths:
+            for p,f in zip_longest(self.infl_glos_source_paths, self.infl_glos_formats):
+                infl_lst.append(
+                    InflGlosSource(source_path=p, glos_format=f)
+                )
+        if self.hunspell_dic_paths:
+            for hu in self.hunspell_dic_paths:
+                infl_lst.append(
+                    HunspellDic(source_path=hu)
+                )
+        print(f"> Created {len(infl_lst)} inflection dictionaries.")
+        return infl_lst
+
+    def get_infl(self, word: str) -> set[str]:
+        res: set[str] = set()
+        for infl_dict in self.InflDicts:
+            res.update(infl_dict.get_infl(word, self.pfx, self.cross))
+        if word in res:
+            res.remove(word)
+        return res
+
+    @cached_property
+    def InputGlos(self) -> Glossary:
+        glos = Glossary()
+        glos.directRead(self.input_dictionary_path, self.input_dictionary_format)
+        print("> Read input dictionary.")
+        return glos
+
+    @cached_property
+    def SortedInputGlos(self) -> list[EntryType]:
+        _sorted = self.sort_glos(self.InputGlos)
+        print("> Sorted input dictionary.")
+        return _sorted
+
+    @cached_property
+    def InputGlosLength(self) -> int:
+        return len(self.SortedInputGlos)
+
+    @cached_property
+    def OutputGlos(self) -> Glossary:
+        glos_syn = Glossary()
+        glos_syn.setInfo("title", self.InputGlos.getInfo("title"))
+        glos_syn.setInfo("description", self.InputGlos.getInfo("description"))
+        glos_syn.setInfo("author", self.InputGlos.getInfo("author"))
+        for data_entry in self.InputGlos:
+            if data_entry.defiFormat == "b":
+                glos_syn.addEntry(
+                    glos_syn.newDataEntry(
+                        data_entry.s_word, data_entry.data
+                    )
+                )
+        print("> Created output dictionary.")
+        return glos_syn
+
+    def main(self) -> None:
+        cnt = 0
+        total_new_inflections_found = 0
+        for entry in self.SortedInputGlos:
+            if entry.defiFormat != "b":
+                headword = entry.l_word[0]
+                inflections = self.get_infl(headword)
+                total_new_inflections_found += len(inflections)
+                if self.keep_existing_inflections and (len(entry.l_word) > 1):
+                    inflections.update(entry.l_word[1:])
+                l_word = [headword, *inflections]
+                self.OutputGlos.addEntry(
+                    self.OutputGlos.newEntry(
+                        word=l_word,
+                        defi=entry.defi,
+                        defiFormat=entry.defiFormat
+                    )
+                )
+                cnt += 1
+            print(
+                f"\r> Processed {cnt:,} / {self.InputGlosLength:,} words. Total new inflections found: {total_new_inflections_found:,}",
+                end="\r")
+        print("")
+        if self.output_format == "Stardict":
+            self.OutputGlos.write(str(self.OutPath), format=self.output_format, dictzip=False)
         else:
-            suffixes.insert(0, entry.l_word[0])
-            word_suffixes = suffixes
+            self.OutputGlos.write(str(self.OutPath), format=self.output_format)
 
-        glos_syn.addEntry(
-            glos_syn.newEntry(
-                word=word_suffixes, defi=entry.defi, defiFormat=entry.defiFormat
-            )
-        )
-        cnt += 1
-        print(f"\r> Processed {cnt:,} / {glos_len} words. Total inflections found: {total_infl_found:,}", end="\r")
-    print(f"\n{'Writing the output file(s)...':<35}", end="")
-    outname = get_base_name(dict_)
-    outdir = f"{outname}_with_inflections"
-    try:
-        if not os.path.exists(outdir):
-            os.mkdir(outdir)
-        os.chdir(outdir)
-    except:
-        sys.exit("[!] Couldn't create or enter the output directory.")
-
-    # for format parameter check the PyGlossary README > Supported formats > your preferred format > "Name" attribute
-    if output_format == "Stardict":
-        glos_syn.write(f"{outname}", format=output_format, dictzip=False)
-    else:
-        glos_syn.write(f"{outname}", format=output_format)
-    print(f"{'Done.' :>6}")
+class ArgparseNS:
+    input_dictionary_path: str = None
+    input_dictionary_format: str = None
+    output_format: str = "Stardict"
+    pfx: bool = False
+    cross: bool = False
+    keep_existing_inflections: bool = False
+    infl_glos_source_paths: list[str] = list()
+    infl_glos_formats: list[str] = list()
+    hunspell_dic_paths: list[str] = list()
+    unmunched_path: str = None
 
 if __name__ == '__main__':
     Glossary.init()
-    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("-d", "--dict-file", dest="df",
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter, description=
+    """
+        Add inflection information to any dictionary format supported by PyGlossary.
+    """)
+    parser.add_argument("-i", "--input-dictionary", dest="input_dictionary_path",
         help="Input dictionary path.", required=True)
 
-    parser.add_argument("-j", "--unmunched-json", dest="json",
+    parser.add_argument("-u", "--unmunched-json", dest="unmunched_path",
         help=f"<language>.json(.gz)")
 
-    parser.add_argument("--glos-infl-source", dest="gs",
-        help="Dictionary that will be used as an inflection source by-itself or together with json file.")
+    parser.add_argument("--glos-infl-sources", dest="infl_glos_source_paths", nargs="+", default=list(),
+        help="""Paths of dictionaries that will be used as an inflection source by-themselves or together with unmunched json file.
+         Separate multiple sources with a space between them.""")
 
-    parser.add_argument("--glos-infl-source-format", dest="gsf",
-        default="", choices=Glossary.readFormats, metavar="",
-        help="--glos-infl-source dictionary format, allowed values are same as --input-format")
+    parser.add_argument("--glos-infl-source-formats", dest="infl_glos_formats", nargs="+", default=list(),
+        choices=Glossary.readFormats, metavar="", help="""--glos-infl-sources dictionary format(s),
+         allowed values are same as --input-format. Separate multiple formats with a space between them.""")
 
-    parser.add_argument("--input-format", dest="informat",
+    parser.add_argument("-hu", "--hunspell-dic-paths", dest="hunspell_dic_paths", nargs="+", default=list(),
+        metavar="", help="""Paths of the Hunspell .dic or .aff files.
+        Separate multiple sources with a space between them.""")
+
+    parser.add_argument("--input-format", dest="input_dictionary_format",
         default=None, choices=Glossary.readFormats,
         help=f"Allowed values: {', '.join(Glossary.readFormats)}", metavar="")
 
-    parser.add_argument("--output-format", dest="outformat", default="Stardict",
+    parser.add_argument("--output-format", dest="output_format", default="Stardict",
         choices=Glossary.writeFormats,
         help=f"Allowed values: {', '.join(Glossary.writeFormats)}", metavar="")
 
-    parser.add_argument("-p", "--add-prefixes", dest="pfx", action="store_true", default=False)
-    parser.add_argument("-c", "--add-cross-products", dest="cross", action="store_true", default=False)
-    parser.add_argument("-k", "--keep", dest="keep", action="store_true", default=False,
+    parser.add_argument("-p", "--add-prefixes", dest="pfx", action="store_true", default=False,
+                        help="""Add prefixes from the unmunched json.""")
+    parser.add_argument("-c", "--add-cross-products", dest="cross", action="store_true", default=False,
+                        help="""Add cross products from the unmunched json.""")
+    parser.add_argument("-k", "--keep", dest="keep_existing_inflections", action="store_true", default=False,
                         help="Keep existing inflections.")
-    parser.add_argument("--sort", dest="sort", action="store_true", default=False, help="Sort input dictionary.")
-    args = parser.parse_args()
-    if not (args.json or args.gs):
-        sys.exit("[!] You need to specify at least one inflection source: --unmunched-json, --glos-infl-source or both.")
-    infl_list = []
-    print(f"\r{'Preparing the inflection sources...':<35}", end="")
-    if args.json:
-        infl_json = Unmunched(source=args.json)
-        infl_list.append(infl_json)
-    if args.gs:
-        infl_glos = GlosSource(source=args.gs, glos_format=args.gsf)
-        infl_list.append(infl_glos)
-    print(f"{'Done.' :>6}")
-    add_infl(
-        dict_=args.df, infl_dicts=infl_list, pfx=args.pfx,
-        cross=args.cross, input_format=args.informat,
-        output_format=args.outformat, keep=args.keep, sort=args.sort
+    args = parser.parse_args(namespace=ArgparseNS)
+    if not (args.unmunched_path or args.infl_glos_source_paths):
+        sys.exit("[!] You need to specify at least one inflection source: --unmunched-json, --glos-infl-sources, --hunspell-paths or all.")
+    add_inflections = AddInflections(
+        input_dictionary_path=args.input_dictionary_path,
+        input_dictionary_format=args.input_dictionary_format,
+        output_format=args.output_format,
+        pfx=args.pfx,
+        cross=args.cross,
+        keep_existing_inflections=args.keep_existing_inflections,
+        infl_glos_source_paths=args.infl_glos_source_paths,
+        infl_glos_formats=args.infl_glos_formats,
+        hunspell_dic_paths=args.hunspell_dic_paths,
+        unmunched_path=args.unmunched_path
     )
+    add_inflections.main()
