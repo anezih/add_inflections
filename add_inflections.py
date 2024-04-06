@@ -121,14 +121,17 @@ class InflGlosSource(InflBase):
 
 class HunspellDic(InflBase):
     # Taken from: https://gist.github.com/zverok/c574b7a9c42cc17bdc2aa396e3edd21a
-    def unmunch(self, word: Word, aff: Aff) -> set[str]:
-        result: set[str] = set()
+    def unmunch(self, word: Word, aff: Aff) -> dict[str,dict[str,set[str]]]:
+        result = {
+            word.stem : {
+                "PFX"   : set(),
+                "SFX"   : set(),
+                "Cross" : set()
+            }
+        }
 
         if aff.FORBIDDENWORD and aff.FORBIDDENWORD in word.flags:
             return result
-
-        if not (aff.NEEDAFFIX and aff.NEEDAFFIX in word.flags):
-            result.add(word.stem)
 
         suffixes = [
             suffix
@@ -147,7 +150,7 @@ class HunspellDic(InflBase):
             root = word.stem[0:-len(suffix.strip)] if suffix.strip else word.stem
             suffixed = root + suffix.add
             if not (aff.NEEDAFFIX and aff.NEEDAFFIX in suffix.flags):
-                result.add(suffixed)
+                result[word.stem]["SFX"].add(suffixed)
 
             secondary_suffixes = [
                 suffix2
@@ -157,13 +160,13 @@ class HunspellDic(InflBase):
             ]
             for suffix2 in secondary_suffixes:
                 root = suffixed[0:-len(suffix2.strip)] if suffix2.strip else suffixed
-                result.add(root + suffix2.add)
+                result[word.stem]["SFX"].add(root + suffix2.add)
 
         for prefix in prefixes:
             root = word.stem[len(prefix.strip):]
             prefixed = prefix.add + root
             if not (aff.NEEDAFFIX and aff.NEEDAFFIX in prefix.flags):
-                result.add(prefixed)
+                result[word.stem]["PFX"].add(prefixed)
 
             if prefix.crossproduct:
                 additional_suffixes = [
@@ -175,7 +178,7 @@ class HunspellDic(InflBase):
                 for suffix in suffixes + additional_suffixes:
                     root = prefixed[0:-len(suffix.strip)] if suffix.strip else prefixed
                     suffixed = root + suffix.add
-                    result.add(suffixed)
+                    result[word.stem]["Cross"].add(suffixed)
 
                     secondary_suffixes = [
                         suffix2
@@ -185,29 +188,44 @@ class HunspellDic(InflBase):
                     ]
                     for suffix2 in secondary_suffixes:
                         root = suffixed[0:-len(suffix2.strip)] if suffix2.strip else suffixed
-                        result.add(root + suffix2.add)
-        if word.stem in result:
-            result.remove(word.stem)
+                        result[word.stem]["Cross"].add(root + suffix2.add)
         return result
 
     @cached_property
-    def InflDict(self) -> dict[str,set[str]]:
+    def InflDict(self) -> dict[str,dict[str,list[str]]]:
         if not self.path.exists():
             raise FileNotFoundError(f"Couldn't find Hunspell dictionary at: {self.source_path}")
         base_name = self.path.parent / self.path.stem
         hunspell_dictionary = Dictionary.from_files(str(base_name))
         aff: Aff = hunspell_dictionary.aff
         all_words: list[Word] = hunspell_dictionary.dic.words
-        results: dict[str, set[str]] = dict()
+        results: list[dict[str,dict[str,set[str]]]] = list()
         for word in all_words:
-            if word.stem in results.keys():
-                results[word.stem].update(self.unmunch(word, aff))
-            else:
-                results[word.stem] = self.unmunch(word, aff)
-        return results
+            unmunched = self.unmunch(word, aff)
+            if any([unmunched[word.stem]["SFX"], unmunched[word.stem]["PFX"], unmunched[word.stem]["Cross"]]):
+                results.append(unmunched)
+
+        _infl_dict: dict[str,dict[str, set[str]]] = dict()
+        for it in results:
+            for key, val in it.items():
+                if key in _infl_dict.keys():
+                    _infl_dict[key]["PFX"].update(val["PFX"])
+                    _infl_dict[key]["SFX"].update(val["SFX"])
+                    _infl_dict[key]["Cross"].update(val["Cross"])
+                else:
+                    _infl_dict[key] = val
+        return _infl_dict
 
     def get_infl(self, word: str, pfx: bool = False, cross: bool = False) -> set[str]:
-        return self.InflDict.get(word, set())
+        afx = set()
+        afx_dict = self.InflDict.get(word)
+        if afx_dict:
+            afx.update(afx_dict["SFX"])
+            if pfx:
+                afx.update(afx_dict["PFX"])
+            if cross:
+                afx.update(afx_dict["Cross"])
+        return afx
 
 class AddInflections:
     def __init__(self, input_dictionary_path: str, input_dictionary_format: str,
@@ -319,21 +337,20 @@ class AddInflections:
         cnt = 0
         total_new_inflections_found = 0
         for entry in self.SortedInputGlos:
-            if entry.defiFormat != "b":
-                headword = entry.l_word[0]
-                inflections = self.get_infl(headword)
-                total_new_inflections_found += len(inflections)
-                if self.keep_existing_inflections and (len(entry.l_word) > 1):
-                    inflections.update(entry.l_word[1:])
-                l_word = [headword, *inflections]
-                self.OutputGlos.addEntry(
-                    self.OutputGlos.newEntry(
-                        word=l_word,
-                        defi=entry.defi,
-                        defiFormat=entry.defiFormat
-                    )
+            headword = entry.l_word[0]
+            inflections = self.get_infl(headword)
+            total_new_inflections_found += len(inflections)
+            if self.keep_existing_inflections and (len(entry.l_word) > 1):
+                inflections.update(entry.l_word[1:])
+            l_word = [headword, *inflections]
+            self.OutputGlos.addEntry(
+                self.OutputGlos.newEntry(
+                    word=l_word,
+                    defi=entry.defi,
+                    defiFormat=entry.defiFormat
                 )
-                cnt += 1
+            )
+            cnt += 1
             print(
                 f"\r> Processed {cnt:,} / {self.InputGlosLength:,} words. Total new inflections found: {total_new_inflections_found:,}",
                 end="\r")
@@ -394,7 +411,7 @@ if __name__ == '__main__':
     parser.add_argument("-k", "--keep", dest="keep_existing_inflections", action="store_true", default=False,
                         help="Keep existing inflections.")
     args = parser.parse_args(namespace=ArgparseNS)
-    if not (args.unmunched_path or args.infl_glos_source_paths):
+    if not (args.unmunched_path or args.infl_glos_source_paths or args.hunspell_dic_paths):
         sys.exit("[!] You need to specify at least one inflection source: --unmunched-json, --glos-infl-sources, --hunspell-paths or all.")
     add_inflections = AddInflections(
         input_dictionary_path=args.input_dictionary_path,
