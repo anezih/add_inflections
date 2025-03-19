@@ -6,7 +6,7 @@ from functools import cached_property
 from itertools import zip_longest
 from pathlib import Path
 
-from pyglossary.glossary_type import EntryType
+from pyglossary.glossary_types import EntryType
 from pyglossary.glossary_v2 import Glossary
 from spylls.hunspell.data.aff import Aff
 from spylls.hunspell.data.dic import Word
@@ -103,7 +103,7 @@ class InflGlosSource(InflBase):
             raise FileNotFoundError(f"Couldn't find InflGlosSource dictionary at: {self.source_path}")
         glos = Glossary()
         if self.glos_format:
-            glos.directRead(filename=str(self.path), format=self.glos_format)
+            glos.directRead(filename=str(self.path), formatName=self.glos_format)
         else:
             glos.directRead(filename=str(self.path))
         _infl_dict: dict[str,set[str]] = dict()
@@ -303,7 +303,7 @@ class AddInflections:
     @cached_property
     def InputGlos(self) -> Glossary:
         glos = Glossary()
-        glos.directRead(self.input_dictionary_path, self.input_dictionary_format)
+        glos.directRead(filename=self.input_dictionary_path, formatName=self.input_dictionary_format)
         print("> Read input dictionary.")
         return glos
 
@@ -356,9 +356,9 @@ class AddInflections:
                 end="\r")
         print("")
         if self.output_format == "Stardict":
-            self.OutputGlos.write(str(self.OutPath), format=self.output_format, dictzip=False)
+            self.OutputGlos.write(str(self.OutPath), formatName=self.output_format, dictzip=False)
         else:
-            self.OutputGlos.write(str(self.OutPath), format=self.output_format)
+            self.OutputGlos.write(str(self.OutPath), formatName=self.output_format)
 
 class ArgparseNS:
     input_dictionary_path: str = None
