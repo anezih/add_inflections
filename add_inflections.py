@@ -289,7 +289,7 @@ class AddInflections:
                 infl_lst.append(
                     HunspellDic(source_path=hu)
                 )
-        print(f"> Created {len(infl_lst)} inflection dictionaries.")
+        print(f"> Created {len(infl_lst)} inflection {'dictionaries' if len(infl_lst) > 1 else 'dictionary'}.")
         return infl_lst
 
     def get_infl(self, word: str) -> set[str]:
@@ -356,9 +356,9 @@ class AddInflections:
                 end="\r")
         print("")
         if self.output_format == "Stardict":
-            self.OutputGlos.write(str(self.OutPath), formatName=self.output_format, dictzip=False)
+            self.OutputGlos.write(filename=str(self.OutPath), formatName=self.output_format, dictzip=False)
         else:
-            self.OutputGlos.write(str(self.OutPath), formatName=self.output_format)
+            self.OutputGlos.write(filename=str(self.OutPath), formatName=self.output_format)
 
 class ArgparseNS:
     input_dictionary_path: str = None
