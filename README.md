@@ -56,6 +56,6 @@ In the example above we have used 4 inflection sources:
 # Required Packages
 
 ```
-pip install pyglossary==4.6.1
+pip install pyglossary
 pip install spylls
 ```
