@@ -108,12 +108,12 @@ class InflGlosSource(InflBase):
             glos.directRead(filename=str(self.path))
         _infl_dict: dict[str,set[str]] = dict()
         for entry in glos:
-            if len(entry.l_word) > 1:
-                headword = entry.l_word[0]
+            if len(entry.l_term) > 1:
+                headword = entry.l_term[0]
                 if headword in _infl_dict.keys():
-                    _infl_dict[headword].update(entry.l_word[1:])
+                    _infl_dict[headword].update(entry.l_term[1:])
                 else:
-                    _infl_dict[headword] = set(entry.l_word[1:])
+                    _infl_dict[headword] = set(entry.l_term[1:])
         return _infl_dict
 
     def get_infl(self, word: str, pfx: bool = False, cross: bool = False) -> set[str]:
@@ -251,7 +251,7 @@ class AddInflections:
 
     def sort_glos(self, glos: Glossary) -> list[EntryType]:
         entrytype_lst = [g for g in glos if g.defiFormat != "b"]
-        entrytype_lst.sort(key=lambda x: (x.l_word[0].encode("utf-8").lower(), x.l_word[0]))
+        entrytype_lst.sort(key=lambda x: (x.l_term[0].encode("utf-8").lower(), x.l_term[0]))
         return entrytype_lst
 
     @property
@@ -337,15 +337,15 @@ class AddInflections:
         cnt = 0
         total_new_inflections_found = 0
         for entry in self.SortedInputGlos:
-            headword = entry.l_word[0]
+            headword = entry.l_term[0]
             inflections = self.get_infl(headword)
             total_new_inflections_found += len(inflections)
-            if self.keep_existing_inflections and (len(entry.l_word) > 1):
-                inflections.update(entry.l_word[1:])
-            l_word = [headword, *inflections]
+            if self.keep_existing_inflections and (len(entry.l_term) > 1):
+                inflections.update(entry.l_term[1:])
+            l_term = [headword, *inflections]
             self.OutputGlos.addEntry(
                 self.OutputGlos.newEntry(
-                    word=l_word,
+                    word=l_term,
                     defi=entry.defi,
                     defiFormat=entry.defiFormat
                 )
